@@ -17,9 +17,12 @@ def provision():
 			if request.headers['operation'] == 'createUser':
 				data = request.json
 				print(data['user_name'])
-				user.register(data['user_name'], data['password'], data['mobile_no'], data['email_id'], data['timestamp'], request.json)
-				response = {'status': 'RES_CREATED', 'message':'User Created'}
-				return jsonify(response),201
+				response = user.register(data['user_name'], data['password'], data['mobile_no'], data['email_id'], data['timestamp'], request.json)
+				if response['status'] == 'RES_CREATED':
+					return jsonify(response),201
+				else:
+					return jsonify(response),400
+			
 			elif request.headers['operation'] == 'loginUser':
 				data = request.json
 				response = user.login(data['mobile_no'], data['password']) 
