@@ -1,77 +1,113 @@
-import ast
-
+from database import Database
 from shapely.geometry import Polygon, Point, mapping
+import json
 
-from user_auth import redis_client
+db = Database('NULL', 'NULL')
 
 
 class Stand:
+    def __init__(self, key, properties, geometry):
+        self.key = key
+        self.properties = properties
+        self.geometry = geometry
 
-    def __init__(self, stand_name, stand_coordinates, stand_centroid, stand_manager, manager_contact, no_of_bicycles):
-        """
-        This is an constructor for class Stand which holds initial default values of classes
-        :param stand_name:
-        :param stand_coordinates:
-        :param stand_centroid:
-        :param stand_manager:
-        :param manager_contact:
-        :param no_of_bicycles
-        """
-        self.stand_name = stand_name
-        self.stand_coordinates = stand_coordinates
-        self.stand_centroid = stand_centroid
-        self.stand_manager = stand_manager
-        self.manager_contact = manager_contact
-        self.no_of_bicycles = no_of_bicycles
+    def stand_ref_point(self, lon_point_list, lat_point_list):
+        polygon_geom = Polygon(zip(lon_point_list, lat_point_list))
+        stand_ref_pt = polygon_geom.representative_point()
+        return stand_ref_pt
 
-    def register(self, stand_name, stand_coordinates, stand_manager, manager_contact, no_of_bicycles):
-        if redis_client.exists(manager_contact) is 0:
-            stand_data = {
-                'consumer_type': 'stand',
-                'stand_name': stand_name,
-                'stand_coordinates': stand_coordinates,
-                'stand_manager': stand_manager,
-                'manager_contact': manager_contact,
-                'no_of_bicycles': no_of_bicycles
+    def validate_data(self, data, keys):
+        for key in keys:
+            try:
+                if data[key] == "":
+                    message = 'Validation Error ! Received NULL value : ' + key
+                    return {'status': 'BAD_REQUEST', 'message': message}
+            except KeyError as e:
+                message = 'Validation Error ! Missing parameter : ' + str(e)
+                return {'status': 'BAD_REQUEST', 'message': message}
+        return {'status': 'VALID', 'message': 'VALID DATA'}
+
+
+    def register(self, stand_id, properties, geometry):
+        latitude = []
+        longitude = []
+        #req_property_keys = ['']
+        #try:
+        #   info = self.validate_data(properties, )
+        for x in geometry['coordinates']:
+            print(x)
+            print(len(x))
+            i = 0
+            while i < len(x):
+                print(x[i])
+                latitude.append(x[i][1])
+                longitude.append(x[i][0])
+                i = i+1
+        stand_ref_point = self.stand_ref_point(longitude, latitude)
+        stand_ref_point = mapping(stand_ref_point)
+        print(stand_ref_point)
+        db.set_geo_point('Stand', stand_ref_point['coordinates'][0], stand_ref_point['coordinates'][1], properties['stand_id'])
+        polygon_cords_size = len(geometry['coordinates'])
+        print(polygon_cords_size)
+        geometry = json.dumps(geometry)
+        latitude = json.dumps(latitude)
+        longitude = json.dumps(longitude)
+        stand_ref_point = json.dumps(stand_ref_point['coordinates'])
+        #except:
+        #    return {'status': 'BAD_REQUEST', 'message': 'Database Error'}
+
+        try:
+            if db.is_user_exists(stand_id) is 0:
+                stand_data = {
+                    'type': 'Stand',
+                    'stand_id': properties['stand_id'],
+                    'name': properties['name'],
+                    'contact': properties['contact'],
+                    'manager': properties['manager'],
+                    'timestamp': properties['timestamp'],
+                    'bicycles': properties['bicycles'],
+                    'address': properties['address'],
+                    'longitude': longitude,
+                    'latitude': latitude,
+                    'stand_ref_pt': stand_ref_point,
+                    'geometry': geometry
+                }
+                print(stand_data)
+                db.set_entry(stand_id, stand_data)
+                print(json.loads(db.get_entry(stand_id, 'geometry')))
+                return {'status': 'RES_CREATED', 'message': 'Stand Created Successfully'}
+            else:
+                return {'status': 'BAD_REQUEST', 'message': 'Stand With Similar Credential already available'}
+        except KeyError as key:
+            message = 'Validation Error ! Missing Key : ' + str(key)
+            response = {'status': 'BAD_REQUEST', 'message': message}
+            return response
+        except:
+            return {'status': 'BAD_REQUEST', 'message': 'Database Error'}
+
+    def stand_info(self, stand_id):
+        if db.is_user_exists(stand_id) is 1:
+            print(db.get_entry(stand_id, 'name'))
+            print(db.get_entry(stand_id, 'contact'))
+            print(db.get_entry(stand_id, 'manager'))
+            print(db.get_entry(stand_id, 'bicycles'))
+            print(db.get_entry(stand_id, 'stand_ref_pt'))
+            print(db.get_entry(stand_id, 'geometry'))
+            stand_properties = {
+                'name': db.get_entry(stand_id, 'name'),
+                'manager': db.get_entry(stand_id, 'manager'),
+                'contact': db.get_entry(stand_id, 'contact'),
+                'stand_ref_pt': db.get_entry(stand_id, 'stand_ref_pt'),
+                'address': db.get_entry(stand_id, 'address'),
+                'bicycles': db.get_entry(stand_id, 'bicycles')
             }
-            print(stand_coordinates)
-            redis_client.hmset(manager_contact, stand_data)
-            stand_coordinates_list = ast.literal_eval(stand_coordinates)
-            print(stand_coordinates_list)
-            polygon = Polygon(stand_coordinates_list)
-            print(polygon)
-            print(Point(polygon.representative_point().coords))
-            geojson = mapping(polygon.representative_point())
-            print(geojson)
-            stand_ref_point = Point(geojson['coordinates'])
-            print(stand_ref_point)
-            print(stand_ref_point.within(polygon))
-            response = {'status': 'RES_CREATED', 'message': 'Stand Registered Successfully'}
-            return response
+            stand_geometry = json.loads(db.get_entry(stand_id, 'geometry'))
+            stand_info = {
+                'type': 'Feature',
+                'properties': stand_properties,
+                'geometry': stand_geometry
+            }
+
+            return {'status': 'RES_OK', 'message': 'Stand Information', 'stand_info': stand_info}
         else:
-            response = {'status': 'BAD_REQUEST', 'message': 'Stand with same identifier already exists!'}
-            return response
-
-    def modify(self, stand_name, stand_coordinates, stand_centroid, stand_manager, manager_contact, no_of_bicycles):
-        pass
-
-    def delete(self, stand_name, stand_coordinates, stand_centroid, stand_manager, manager_contact, no_of_bicycles):
-        pass
-
-    def no_of_bicycles(self, stand_name, stand_coordinates, stand_centroid, stand_manager, manager_contact, no_of_bicycles):
-        """
-
-        :param stand_name:
-        :param stand_coordinates:
-        :param stand_centroid:
-        :param stand_manager:
-        :param manager_contact:
-        :param no_of_bicycles:
-        """
-        pass
-
-    def validate_stand_area(self,stand_name, stand_coordinates, stand_centroid, stand_manager, manager_contact, no_of_bicycles):
-        pass
-
-    def nearby_stands(self, stand_name, stand_coordinates, stand_centroid, stand_manager, manager_contact, no_of_bicycles):
-        pass
+            print('Currently Stand Doesn"t exist')
