@@ -1,6 +1,8 @@
-from user_auth import redis_client
-from shapely.geometry import Polygon, Point, mapping
 import ast
+
+from shapely.geometry import Polygon, Point, mapping
+
+from user_auth import redis_client
 
 
 class Stand:
@@ -13,7 +15,7 @@ class Stand:
         :param stand_centroid:
         :param stand_manager:
         :param manager_contact:
-        :param no_of_bicycles:
+        :param no_of_bicycles
         """
         self.stand_name = stand_name
         self.stand_coordinates = stand_coordinates
